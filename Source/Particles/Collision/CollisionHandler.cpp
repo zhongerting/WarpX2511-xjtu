@@ -1,0 +1,141 @@
+/* Copyright 2020 David Grote
+ *
+ * This file is part of WarpX.
+ *
+ * License: BSD-3-Clause-LBNL
+ */
+#include "CollisionHandler.H"
+
+#include "Particles/Collision/BackgroundMCC/BackgroundMCCCollision.H"
+#include "Particles/Collision/BackgroundStopping/BackgroundStopping.H"
+#include "Particles/Collision/BinaryCollision/BinaryCollision.H"
+#include "Particles/Collision/BinaryCollision/Bremsstrahlung/BremsstrahlungFunc.H"
+#include "Particles/Collision/BinaryCollision/Bremsstrahlung/PhotonCreationFunc.H"
+#include "Particles/Collision/BinaryCollision/Coulomb/PairWiseCoulombCollisionFunc.H"
+#include "Particles/Collision/BinaryCollision/DSMC/DSMCFunc.H"
+#include "Particles/Collision/BinaryCollision/DSMC/SplitAndScatterFunc.H"
+#include "Particles/Collision/BinaryCollision/NuclearFusion/NuclearFusionFunc.H"
+#include "Particles/Collision/BinaryCollision/LinearBreitWheeler/LinearBreitWheelerCollisionFunc.H"
+#include "Particles/Collision/BinaryCollision/LinearCompton/LinearComptonCollisionFunc.H"
+#include "Particles/Collision/BinaryCollision/ParticleCreationFunc.H"
+#include "Utils/TextMsg.H"
+
+#include <AMReX_ParmParse.H>
+
+#include <vector>
+
+CollisionHandler::CollisionHandler(MultiParticleContainer const * const mypc)
+{
+
+    // Read in collision input
+    const amrex::ParmParse pp_collisions("collisions");
+    pp_collisions.queryarr("collision_names", collision_names);
+
+    // Create instances based on the collision type
+    auto const ncollisions = collision_names.size();
+    collision_types.resize(ncollisions);
+    allcollisions.resize(ncollisions);
+    for (int i = 0; i < static_cast<int>(ncollisions); ++i) {
+        const amrex::ParmParse pp_collision_name(collision_names[i]);
+
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(WarpX::n_rz_azimuthal_modes==1,
+        "RZ mode `warpx.n_rz_azimuthal_modes` must be 1 when using the binary collision module.");
+
+        // For legacy, pairwisecoulomb is the default
+        std::string type = "pairwisecoulomb";
+
+        pp_collision_name.query("type", type);
+        collision_types[i] = type;
+
+        if (type == "pairwisecoulomb") {
+            allcollisions[i] =
+               std::make_unique<BinaryCollision<PairWiseCoulombCollisionFunc>>(
+                    collision_names[i], mypc
+                );
+            m_use_global_debye_length |= allcollisions[i]->use_global_debye_length();
+        }
+        else if (type == "background_mcc") {
+            allcollisions[i] = std::make_unique<BackgroundMCCCollision>(collision_names[i]);
+        }
+        else if (type == "background_stopping") {
+            allcollisions[i] = std::make_unique<BackgroundStopping>(collision_names[i]);
+        }
+        else if (type == "dsmc") {
+            allcollisions[i] =
+                std::make_unique<BinaryCollision<DSMCFunc, SplitAndScatterFunc>>(
+                    collision_names[i], mypc
+                );
+        }
+        else if (type == "nuclearfusion") {
+            allcollisions[i] =
+               std::make_unique<BinaryCollision<NuclearFusionFunc, ParticleCreationFunc>>(
+                    collision_names[i], mypc
+                );
+        }
+        else if (type == "bremsstrahlung") {
+            allcollisions[i] =
+               std::make_unique<BinaryCollision<BremsstrahlungFunc, PhotonCreationFunc>>(
+                    collision_names[i], mypc
+                );
+        }
+        else if (type == "linear_breit_wheeler") {
+            allcollisions[i] =
+               std::make_unique<BinaryCollision<LinearBreitWheelerCollisionFunc, ParticleCreationFunc>>(
+                    collision_names[i], mypc
+               );
+        }
+        else if (type == "linear_compton") {
+            allcollisions[i] =
+               std::make_unique<BinaryCollision<LinearComptonCollisionFunc, ParticleCreationFunc>>(
+                    collision_names[i], mypc
+               );
+        }
+        else{
+            WARPX_ABORT_WITH_MESSAGE("Unknown collision type.");
+        }
+
+    }
+
+}
+
+/** Perform all collisions
+ *
+ * @param step Current iteration
+ * @param cur_time Current time
+ * @param dt Time step
+ * @param mypc MultiParticleContainer calling this method
+ *
+ */
+/**
+ * @brief 执行所有配置的粒子碰撞过程
+ * 
+ * 这是粒子碰撞处理的主入口函数，负责在每个时间步中协调和管理所有碰撞类型的执行。
+ * 支持多种碰撞模型，包括库仑碰撞、蒙特卡洛碰撞、DSMC等，并提供灵活的执行频率控制。
+ * 
+ * @param step      当前迭代步数
+ * @param cur_time  当前物理时间
+ * @param dt        时间步长
+ * @param mypc      多粒子容器指针，包含所有粒子物种信息
+ */
+void CollisionHandler::doCollisions ( int step, amrex::Real cur_time, amrex::Real dt, MultiParticleContainer* mypc)
+{
+    // 如果需要使用全局德拜长度，首先计算整个系统的德拜长度
+    // 德拜长度是等离子体中电荷屏蔽效应的特征长度，对碰撞截面的计算很重要
+    if (m_use_global_debye_length) {
+        mypc->GenerateGlobalDebyeLength();
+    }
+
+    // 遍历所有配置的碰撞类型，按顺序执行碰撞处理
+    for (auto& collision : allcollisions) {
+        // 获取当前碰撞类型的执行频率（每ndt步执行一次）
+        int const ndt = collision->get_ndt();
+        
+        // 根据执行频率判断是否在当前时间步执行该碰撞
+        // 这种设计允许不同碰撞类型有不同的更新频率，优化计算效率
+        if ( step % ndt == 0 ) {
+            // 执行具体的碰撞处理，传入调整后的时间步长（dt*ndt）
+            // 这样可以保持物理时间的正确性，即使碰撞不是每步都执行
+            collision->doCollisions(cur_time, dt*ndt, mypc);
+        }
+    }
+}

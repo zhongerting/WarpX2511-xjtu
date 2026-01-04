@@ -1,0 +1,31 @@
+foreach(D IN LISTS WarpX_DIMS)
+    warpx_set_suffix_dims(SD ${D})
+    target_sources(lib_${SD}
+      PRIVATE
+        BeamRelevant.cpp
+        ChargeOnEB.cpp
+        ColliderRelevant.cpp
+        DifferentialLuminosity.cpp
+        DifferentialLuminosity2D.cpp
+        FieldEnergy.cpp
+        FieldMaximum.cpp
+        FieldMomentum.cpp
+        FieldPoyntingFlux.cpp
+        FieldProbe.cpp
+        FieldProbeParticleContainer.cpp
+        FieldReduction.cpp
+        FieldProbe.cpp
+        LoadBalanceCosts.cpp
+        LoadBalanceEfficiency.cpp
+        MultiReducedDiags.cpp
+        ParticleEnergy.cpp
+        ParticleExtrema.cpp
+        ParticleHistogram.cpp
+        ParticleHistogram2D.cpp
+        ParticleMomentum.cpp
+        ParticleNumber.cpp
+        ReducedDiags.cpp
+        RhoMaximum.cpp
+        Timestep.cpp
+    )
+endforeach()

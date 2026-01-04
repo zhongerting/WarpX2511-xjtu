@@ -1,0 +1,23 @@
+# set env variable storing the path to the work directory
+export WORK=/afs/cern.ch/work/${USER:0:1}/$USER/
+
+# clone warpx
+if [ ! -d "$WORK/warpx" ]
+then
+    git clone https://github.com/BLAST-WarpX/warpx.git $WORK/warpx
+fi
+
+# load the LCG software stack that has all the dependencies
+source /cvmfs/sft.cern.ch/lcg/views/LCG_108_cuda/x86_64-el9-gcc13-opt/setup.sh
+
+# source environment that ensures that the parallel HDF5 is picked before the serial one
+source /cvmfs/sft.cern.ch/lcg/releases/LCG_108_cuda/hdf5_mpi/1.14.6/x86_64-el9-gcc13-opt/hdf5_mpi-env.sh
+
+export AMREX_CUDA_ARCH="7.0;7.5"
+
+# compiler environment hints
+export CC=$(which gcc)
+export CXX=$(which g++)
+export FC=$(which gfortran)
+export CUDACXX=$(which nvcc)
+export CUDAHOSTCXX=$(which g++)
