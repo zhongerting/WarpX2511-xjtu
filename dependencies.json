@@ -1,9 +1,9 @@
 {
-    "version_warpx": "25.11",
-    "version_amrex": "25.11",
-    "version_pyamrex": "25.11",
+    "version_warpx": "26.04",
+    "version_amrex": "26.04",
+    "version_pyamrex": "26.04",
     "version_picsar": "25.06",
-    "commit_amrex": "35bdc36df60c216f93b27ef08da69f9110024604",
-    "commit_pyamrex": "cf0c15b2319e7ed7d9c90f633d054532147273ab",
+    "commit_amrex": "0b56ec9a168c753497eb09b72d52d9b25b46f43d",
+    "commit_pyamrex": "feb67e81e9b6581470da620b4554f84cf9793500",
     "commit_picsar": "0c329e66010267662a82219f7de7abbd231463f4"
 }
